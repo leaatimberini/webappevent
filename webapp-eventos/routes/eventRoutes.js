@@ -52,11 +52,24 @@ router.post(
   }
 );
 
-// Obtener todos los eventos
+// Obtener todos los eventos con paginación
 router.get("/", async (req, res) => {
+  const { page = 1, limit = 10 } = req.query; // Parámetros de paginación, por defecto página 1 y 10 eventos por página
+
   try {
-    const events = await Event.findAll();
-    res.json(events);
+    const offset = (page - 1) * limit; // Calcular el desplazamiento
+    const { rows: events, count } = await Event.findAndCountAll({
+      offset,
+      limit: parseInt(limit),
+    });
+
+    res.json({
+      total: count,
+      page: parseInt(page),
+      per_page: parseInt(limit),
+      total_pages: Math.ceil(count / limit),
+      events,
+    });
   } catch (error) {
     console.error("Error al obtener los eventos:", error);
     res
@@ -134,11 +147,9 @@ router.put(
       res.json({ message: "Evento actualizado exitosamente", event });
     } catch (error) {
       console.error("Error al actualizar el evento:", error);
-      res
-        .status(500)
-        .json({
-          message: "Error en el servidor, no se pudo actualizar el evento.",
-        });
+      res.status(500).json({
+        message: "Error en el servidor, no se pudo actualizar el evento.",
+      });
     }
   }
 );
@@ -155,11 +166,9 @@ router.delete("/:id", auth, checkRole(["admin"]), async (req, res) => {
     res.json({ message: "Evento eliminado exitosamente." });
   } catch (error) {
     console.error("Error al eliminar el evento:", error);
-    res
-      .status(500)
-      .json({
-        message: "Error en el servidor, no se pudo eliminar el evento.",
-      });
+    res.status(500).json({
+      message: "Error en el servidor, no se pudo eliminar el evento.",
+    });
   }
 });
 
