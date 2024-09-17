@@ -2,7 +2,7 @@ const express = require("express");
 const { Event } = require("../models");
 const auth = require("../middleware/auth");
 const checkRole = require("../middleware/checkRole");
-const { check, validationResult } = require("express-validator"); // Importar express-validator
+const { check, validationResult } = require("express-validator");
 const router = express.Router();
 
 // Crear un nuevo evento con validaciones (solo administradores u organizadores)
@@ -23,7 +23,6 @@ router.post(
       .isEmpty(),
   ],
   async (req, res) => {
-    // Validar los datos de entrada
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -32,7 +31,6 @@ router.post(
     const { nombre, descripcion, fecha, precio, organizador } = req.body;
 
     try {
-      // Crear el evento en la base de datos
       const newEvent = await Event.create({
         nombre,
         descripcion,
@@ -46,7 +44,6 @@ router.post(
         event: newEvent,
       });
     } catch (error) {
-      // Manejo de errores
       console.error("Error al crear el evento:", error);
       res
         .status(500)
@@ -61,7 +58,6 @@ router.get("/", async (req, res) => {
     const events = await Event.findAll();
     res.json(events);
   } catch (error) {
-    // Manejo de errores
     console.error("Error al obtener los eventos:", error);
     res
       .status(500)
@@ -80,7 +76,6 @@ router.get("/:id", async (req, res) => {
     }
     res.json(event);
   } catch (error) {
-    // Manejo de errores
     console.error("Error al obtener el evento:", error);
     res
       .status(500)
@@ -114,7 +109,6 @@ router.put(
       .isEmpty(),
   ],
   async (req, res) => {
-    // Validar los datos de entrada
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -137,12 +131,8 @@ router.put(
 
       await event.save();
 
-      res.json({
-        message: "Evento actualizado exitosamente",
-        event,
-      });
+      res.json({ message: "Evento actualizado exitosamente", event });
     } catch (error) {
-      // Manejo de errores
       console.error("Error al actualizar el evento:", error);
       res
         .status(500)
@@ -164,7 +154,6 @@ router.delete("/:id", auth, checkRole(["admin"]), async (req, res) => {
     await event.destroy();
     res.json({ message: "Evento eliminado exitosamente." });
   } catch (error) {
-    // Manejo de errores
     console.error("Error al eliminar el evento:", error);
     res
       .status(500)
