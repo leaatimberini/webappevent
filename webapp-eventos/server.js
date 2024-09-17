@@ -1,14 +1,26 @@
 const express = require("express");
-const path = require("path");
 const app = express();
 const cors = require("cors");
 const dotenv = require("dotenv");
+const rateLimit = require("express-rate-limit");
+const helmet = require("helmet"); // Importar Helmet
 dotenv.config();
 
 // Middlewares
 app.use(cors());
 app.use(express.json());
-app.use("/uploads", express.static(path.join(__dirname, "uploads"))); // Servir archivos estáticos
+app.use(helmet()); // Usar Helmet para mejorar la seguridad
+
+// Configurar Rate Limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 100, // Limitar cada IP a 100 solicitudes por 'windowMs'
+  message:
+    "Demasiadas solicitudes desde esta IP, por favor inténtalo de nuevo más tarde.",
+});
+
+// Aplicar Rate Limiting a todas las rutas
+app.use(limiter);
 
 // Importar rutas
 const userRoutes = require("./routes/userRoutes");
@@ -73,5 +85,5 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
   await initConfig(); // Inicializar configuración al arrancar el servidor
   console.log(`Servidor corriendo en el puerto ${PORT}`);
-  await sequelize.sync({ force: false }); // Sincronizar base de datos, incluyendo RefreshToken
+  await sequelize.sync({ force: false }); // Sincronizar base de datos
 });
