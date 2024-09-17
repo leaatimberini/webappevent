@@ -2,58 +2,65 @@ const express = require("express");
 const { Ticket, Event } = require("../models");
 const auth = require("../middleware/auth");
 const checkRole = require("../middleware/checkRole");
-const { check, validationResult } = require("express-validator"); // Importar express-validator
 const mercadopago = require("mercadopago");
 const router = express.Router();
 
 // Configurar Mercado Pago
-mercadopago.configurations = {
+mercadopago.configure({
   access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN,
-};
+});
 
-// Validaciones para crear una entrada
-router.post(
-  "/",
-  auth,
-  [
-    check("tipo", "El tipo de entrada es obligatorio").not().isEmpty(),
-    check("precio", "El precio debe ser un número válido").isFloat({ gt: 0 }),
-    check("codigo_qr", "El código QR es obligatorio").not().isEmpty(),
-    check("userId", "El ID de usuario es obligatorio").isInt(),
-    check("eventId", "El ID del evento es obligatorio").isInt(),
-    check("rrppId", "El ID de RRPP es obligatorio").isInt(),
-  ],
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+// Comprar una nueva entrada (solo usuarios autenticados)
+router.post("/", auth, async (req, res) => {
+  const { tipo, precio, eventId } = req.body;
 
-    const { tipo, precio, codigo_qr, userId, eventId, rrppId } = req.body;
+  try {
+    const event = await Event.findByPk(eventId);
+    if (!event)
+      return res.status(404).json({ message: "Evento no encontrado" });
 
-    try {
-      const event = await Event.findByPk(eventId);
-      if (!event)
-        return res.status(404).json({ message: "Evento no encontrado" });
+    // Crear preferencia de pago
+    let preference = {
+      items: [
+        {
+          title: `Entrada para ${event.nombre}`,
+          unit_price: parseFloat(precio),
+          quantity: 1,
+        },
+      ],
+      payer: {
+        email: req.user.email,
+      },
+      back_urls: {
+        success: "http://localhost:5000/success",
+        failure: "http://localhost:5000/failure",
+        pending: "http://localhost:5000/pending",
+      },
+      auto_return: "approved",
+    };
 
-      const newTicket = await Ticket.create({
-        tipo,
-        precio,
-        codigo_qr,
-        userId,
-        eventId,
-        rrppId,
-      });
+    const response = await mercadopago.preferences.create(preference);
 
-      res.status(201).json({
-        message: "Entrada creada exitosamente",
-        ticket: newTicket,
-      });
-    } catch (error) {
-      res.status(400).json({ message: "Error al crear la entrada", error });
-    }
+    // Crear entrada en la base de datos
+    const newTicket = await Ticket.create({
+      tipo,
+      precio,
+      eventId,
+      userId: req.user.id,
+    });
+
+    res.status(201).json({
+      message: "Entrada creada exitosamente",
+      ticket: newTicket,
+      init_point: response.body.init_point, // URL para pagar en Mercado Pago
+    });
+  } catch (error) {
+    console.error("Error al crear la entrada:", error);
+    res
+      .status(500)
+      .json({ message: "Error en el servidor, no se pudo crear la entrada." });
   }
-);
+});
 
 // Obtener todas las entradas (solo administradores)
 router.get("/", auth, checkRole(["admin"]), async (req, res) => {
@@ -61,7 +68,33 @@ router.get("/", auth, checkRole(["admin"]), async (req, res) => {
     const tickets = await Ticket.findAll();
     res.json(tickets);
   } catch (error) {
-    res.status(500).json({ message: "Error al obtener las entradas", error });
+    console.error("Error al obtener las entradas:", error);
+    res
+      .status(500)
+      .json({
+        message: "Error en el servidor, no se pudieron obtener las entradas.",
+      });
+  }
+});
+
+// Validar una entrada por ID (solo administradores)
+router.put("/:id/validate", auth, checkRole(["admin"]), async (req, res) => {
+  try {
+    const ticket = await Ticket.findByPk(req.params.id);
+    if (!ticket)
+      return res.status(404).json({ message: "Entrada no encontrada" });
+
+    ticket.validada = true;
+    await ticket.save();
+
+    res.json({ message: "Entrada validada exitosamente", ticket });
+  } catch (error) {
+    console.error("Error al validar la entrada:", error);
+    res
+      .status(500)
+      .json({
+        message: "Error en el servidor, no se pudo validar la entrada.",
+      });
   }
 });
 
