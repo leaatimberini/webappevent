@@ -1,13 +1,13 @@
 const express = require("express");
-const { User } = require("../models");
+const { User, RefreshToken } = require("../models"); // Importar modelo RefreshToken
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const auth = require("../middleware/auth");
 const checkRole = require("../middleware/checkRole");
 const { check, validationResult } = require("express-validator");
 const multer = require("multer");
-const crypto = require("crypto"); // Importar crypto para generar tokens
-const nodemailer = require("../utils/nodemailer"); // Importar nodemailer para el envío de emails
+const crypto = require("crypto");
+const nodemailer = require("../utils/nodemailer"); // Importar nodemailer para envío de emails
 const path = require("path");
 const router = express.Router();
 const { Op } = require("sequelize");
@@ -55,8 +55,17 @@ router.post(
       const token = jwt.sign(
         { id: newUser.id, rol: newUser.rol },
         process.env.JWT_SECRET,
-        { expiresIn: "1h" }
+        { expiresIn: "15m" }
       );
+
+      // Generar el refresh token
+      const refreshToken = crypto.randomBytes(40).toString("hex");
+      const expires = Date.now() + 7 * 24 * 60 * 60 * 1000; // 1 semana
+      await RefreshToken.create({
+        token: refreshToken,
+        userId: newUser.id,
+        expires,
+      });
 
       res.status(201).json({
         message: "Usuario creado exitosamente",
@@ -67,6 +76,7 @@ router.post(
           rol: newUser.rol,
         },
         token,
+        refreshToken, // Devolver el refresh token
       });
     } catch (error) {
       console.error(error);
@@ -122,8 +132,17 @@ router.post("/login", async (req, res) => {
     const token = jwt.sign(
       { id: user.id, rol: user.rol },
       process.env.JWT_SECRET,
-      { expiresIn: "1h" }
+      { expiresIn: "15m" }
     );
+
+    // Generar el refresh token
+    const refreshToken = crypto.randomBytes(40).toString("hex");
+    const expires = Date.now() + 7 * 24 * 60 * 60 * 1000; // 1 semana
+    await RefreshToken.create({
+      token: refreshToken,
+      userId: user.id,
+      expires,
+    });
 
     res.json({
       message: "Inicio de sesión exitoso",
@@ -135,7 +154,45 @@ router.post("/login", async (req, res) => {
         profileImage: user.profileImage,
       },
       token,
+      refreshToken, // Devolver el refresh token
     });
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .json({ message: "Error en el servidor", error: error.message });
+  }
+});
+
+// Ruta para renovar el token de acceso usando el refresh token
+router.post("/refresh-token", async (req, res) => {
+  const { refreshToken } = req.body;
+
+  try {
+    // Buscar el refresh token en la base de datos
+    const tokenDoc = await RefreshToken.findOne({
+      where: { token: refreshToken },
+    });
+
+    if (!tokenDoc || tokenDoc.expires < Date.now()) {
+      return res
+        .status(401)
+        .json({ message: "Token de actualización inválido o expirado" });
+    }
+
+    // Buscar al usuario asociado
+    const user = await User.findByPk(tokenDoc.userId);
+    if (!user)
+      return res.status(404).json({ message: "Usuario no encontrado" });
+
+    // Generar un nuevo token JWT
+    const newToken = jwt.sign(
+      { id: user.id, rol: user.rol },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+
+    res.json({ token: newToken });
   } catch (error) {
     console.error(error);
     res
@@ -217,6 +274,54 @@ router.post(
       user.resetPasswordToken = null;
       user.resetPasswordExpires = null;
 
+      await user.save();
+
+      res.json({ message: "Contraseña actualizada exitosamente" });
+    } catch (error) {
+      console.error(error);
+      res
+        .status(500)
+        .json({ message: "Error en el servidor", error: error.message });
+    }
+  }
+);
+
+// Ruta para que el usuario autenticado cambie su contraseña
+router.post(
+  "/change-password",
+  auth, // Verificar que el usuario está autenticado
+  [
+    check("currentPassword", "La contraseña actual es obligatoria")
+      .not()
+      .isEmpty(),
+    check(
+      "newPassword",
+      "La nueva contraseña debe tener al menos 6 caracteres"
+    ).isLength({ min: 6 }),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { currentPassword, newPassword } = req.body;
+
+    try {
+      const user = await User.findByPk(req.user.id);
+      if (!user)
+        return res.status(404).json({ message: "Usuario no encontrado" });
+
+      // Verificar si la contraseña actual es correcta
+      const isMatch = await bcrypt.compare(currentPassword, user.password);
+      if (!isMatch)
+        return res
+          .status(400)
+          .json({ message: "Contraseña actual incorrecta" });
+
+      // Si la contraseña actual es correcta, encriptar la nueva y actualizarla
+      const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+      user.password = hashedNewPassword;
       await user.save();
 
       res.json({ message: "Contraseña actualizada exitosamente" });

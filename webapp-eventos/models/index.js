@@ -2,7 +2,8 @@ const User = require("./User");
 const Event = require("./Event");
 const Ticket = require("./Ticket");
 const RRPP = require("./RRPP");
-const Config = require("./config"); // Importar Config
+const Config = require("./Config");
+const RefreshToken = require("./RefreshToken"); // Añadir el modelo de RefreshToken
 
 // Relación de Usuario con Entradas
 User.hasMany(Ticket, { foreignKey: "userId" });
@@ -17,4 +18,4 @@ RRPP.hasMany(Ticket, { foreignKey: "rrppId" });
 Ticket.belongsTo(RRPP, { foreignKey: "rrppId" });
 
 // Exportar todos los modelos en un solo bloque
-module.exports = { User, Event, Ticket, RRPP, Config };
+module.exports = { User, Event, Ticket, RRPP, Config, RefreshToken };
