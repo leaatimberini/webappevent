@@ -7,7 +7,12 @@ const helmet = require("helmet"); // Importar Helmet
 dotenv.config();
 
 // Middlewares
-app.use(cors());
+app.use(
+  cors({
+    origin: "http://localhost:3000", // El dominio del frontend
+    credentials: true, // Permitir credenciales como cookies, headers, etc.
+  })
+);
 app.use(express.json());
 app.use(helmet()); // Usar Helmet para mejorar la seguridad
 
@@ -85,5 +90,6 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
   await initConfig(); // Inicializar configuración al arrancar el servidor
   console.log(`Servidor corriendo en el puerto ${PORT}`);
-  await sequelize.sync({ force: false }); // Sincronizar base de datos
+  await sequelize.sync({ alter: true });
+  // Sincronizar base de datos
 });

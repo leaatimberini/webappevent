@@ -1,3 +1,4 @@
+// models/User.js
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
@@ -20,16 +21,13 @@ const User = sequelize.define("User", {
     defaultValue: "user",
   },
   profileImage: {
-    type: DataTypes.STRING, // Ruta de la imagen de perfil
-    allowNull: true,
+    type: DataTypes.STRING, // Añadir el campo profileImage como STRING
   },
   resetPasswordToken: {
     type: DataTypes.STRING,
-    allowNull: true,
   },
   resetPasswordExpires: {
     type: DataTypes.DATE,
-    allowNull: true,
   },
 });
 
